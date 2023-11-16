@@ -1,6 +1,7 @@
 import requests
 import telebot
 from telebot import types
+from googletrans import Translator
 
 
 API_TOKEN = '6982326902:AAGvDA_BrxQAR2gA0izYRrj4PQWfhO-5bsU'
@@ -8,6 +9,7 @@ BUTTONS_ARRAY = ["Asos", "Farfetch", "FakeShop"]
 ASOS_URL = "https://asos-com1.p.rapidapi.com/products/search"
 
 bot = telebot.TeleBot(API_TOKEN)
+translator = Translator()
 
 user_brand_choices = {}
 asos_parsed_response = {}
@@ -79,7 +81,9 @@ def make_second_keyboard(current_index, photo_index):
 @bot.message_handler(content_types=['text'])
 def handle_text(message):
     if 'Asos' in user_brand_choices[message.from_user.id]:
-        asos_response = get_asos_response(message.text)
+        translated_text = translator.translate(message.text, src='ru', dest='en').text
+        print(translated_text)
+        asos_response = get_asos_response(translated_text)
         asos_parsed_response['id'] = [
             {
                 'id': item['id'],
@@ -87,6 +91,7 @@ def handle_text(message):
                 'price': item['price']['current']['text'],
                 'name': item['name'],
                 'additional_images': item['additionalImageUrls'],
+                'url': 'asos.com/' + item['url'],
             }
             for item in asos_response['data']['products']
         ]
