@@ -77,6 +77,7 @@ def make_keyboard(groups_of_buttons: list[list[str]]):
     keyboard = types.InlineKeyboardMarkup(row_width=max(list(map(lambda x: len(x), groups_of_buttons))))
     for group_of_buttons in groups_of_buttons:
         keyboard.add(*[types.InlineKeyboardButton(text=btn, callback_data=btn) for btn in group_of_buttons])
+    keyboard.add(types.InlineKeyboardButton(text=BASKET_BUTTON, callback_data='go_to_cart'))
     return keyboard
 
 @bot.message_handler(commands=['start'])
@@ -88,7 +89,7 @@ def send_welcome(message):
         "Привет. Это бот по подобру одежды с зарубежных маркетплейсов. "
         "Для начала выбери маркетплейсы, где ты хотел бы поискать товары"
     )
-    keyboard = make_keyboard([BUTTONS_ARRAY, [BASKET_BUTTON]])
+    keyboard = make_keyboard([BUTTONS_ARRAY])
     bot.send_message(message.chat.id, welcome_text, reply_markup=keyboard)
 
 
@@ -103,14 +104,14 @@ def handle_callback(call):
     user_brand_choices[user_id].append(user_choice)
     remaining_buttons = [brand for brand in BUTTONS_ARRAY if brand not in user_brand_choices[user_id]]
     
-    new_text = f"Вы уже выбрали следующие бренды: {', '.join(user_brand_choices[user_id])}\n"
+    new_text = f"Вы уже выбрали следующие маркетплейсы: {', '.join(user_brand_choices[user_id])}\n"
     if remaining_buttons:
-        new_text += 'Вы можете также выбрать еще бренды или введите товар, который вы хотите найти'
+        new_text += 'Вы можете также выбрать еще маркетплейсы или введите товар, который вы хотите найти'
     else:
-        new_text += 'Вы выбрали все возможные бренды. Теперь введите товар, который вы хотите найти'
+        new_text += 'Вы выбрали все возможные маркетплейсы. Теперь введите товар, который вы хотите найти'
     
     if remaining_buttons:
-        keyboard = make_keyboard([remaining_buttons, [BASKET_BUTTON]])
+        keyboard = make_keyboard([remaining_buttons])
         bot.edit_message_text(new_text, call.message.chat.id, call.message.message_id, reply_markup=keyboard)
     else:
         bot.edit_message_text(new_text, call.message.chat.id, call.message.message_id)
@@ -203,8 +204,7 @@ def handle_callback(call):
     product_card['media'] = media
     BASKET_LIST[name] = product_card
     keyboard = make_second_keyboard(current_index, photo_index)
-    bot.edit_message_media(media=types.InputMedia(type='photo', media=media, caption=caption),
-                           chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=keyboard)
+    bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=keyboard)
     bot.answer_callback_query(call.id)
 
 
@@ -214,8 +214,7 @@ def handle_callback(call):
     photo_index = int(call.data.split("|")[2])
     product = BASKET_LIST.pop(parsed_response['id'][current_index]['name'])
     keyboard = make_second_keyboard(current_index, photo_index)
-    bot.edit_message_media(media=types.InputMedia(type='photo', media=product['media'], caption=product['caption']),
-                        chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=keyboard)
+    bot.edit_message_reply_markup(chat_id=call.message.chat.id, message_id=call.message.message_id, reply_markup=keyboard)
     bot.answer_callback_query(call.id)
 
 
@@ -223,14 +222,12 @@ def handle_callback(call):
 def handle_callback(call):
     print("go_to_cart callback")
     if len(BASKET_LIST.items()) == 0:
-        keyboard = make_keyboard([BUTTONS_ARRAY, [BASKET_BUTTON]])
-        bot.send_message(call.message.chat.id, "Ваша корзина пуста", reply_markup=keyboard)
+        keyboard = make_keyboard([BUTTONS_ARRAY])
+        bot.send_message(call.message.chat.id, "Ваша корзина пуста. Выберите интересующие вас маркетплейсы для поиска товаров.", reply_markup=keyboard)
     else:
         for key, value in BASKET_LIST.items():
+            print(key)
             bot.send_photo(call.message.chat.id, value['media'], caption=value['caption'])
-
-
-
 
 
 bot.polling()
