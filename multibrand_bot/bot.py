@@ -2,10 +2,11 @@ import random
 import requests
 import telebot
 from telebot import types
+from pycbrf import ExchangeRates
 from googletrans import Translator
 
 
-API_TOKEN = '6936125571:AAHRHRA_GJrZwJDjIIWcBuDrLSOTj8JMBWs'
+API_TOKEN = '6982326902:AAGvDA_BrxQAR2gA0izYRrj4PQWfhO-5bsU'
 BUTTONS_ARRAY = ['Asos', 'Forever 21']
 BASKET_BUTTON = 'Перейти в корзину'
 ASOS_URL = 'https://asos-com1.p.rapidapi.com/products/search'
@@ -13,6 +14,7 @@ FOREVER21_URL = 'https://apidojo-forever21-v1.p.rapidapi.com/products/search'
 
 bot = telebot.TeleBot(API_TOKEN)
 translator = Translator()
+currency_rate = ExchangeRates()
 
 BASKET_LIST = dict()
 
@@ -44,6 +46,7 @@ def request_to_asos(text):
                 }
             )
     except Exception:
+        print('asos error')
         pass
 
 def request_to_forever(text):
@@ -73,7 +76,7 @@ def request_to_forever(text):
     except Exception:
         pass
 
-def make_keyboard(groups_of_buttons: list[list[str]]):
+def make_keyboard(groups_of_buttons):
     keyboard = types.InlineKeyboardMarkup(row_width=max(list(map(lambda x: len(x), groups_of_buttons))))
     for group_of_buttons in groups_of_buttons:
         keyboard.add(*[types.InlineKeyboardButton(text=btn, callback_data=btn) for btn in group_of_buttons])
@@ -132,7 +135,7 @@ def make_second_keyboard(current_index, photo_index):
         keyboard.add(types.InlineKeyboardButton(text='Удалить из корзины', callback_data=f'drop_from_cart|{current_index}|{photo_index % images_sz}'))
     else:
         keyboard.add(types.InlineKeyboardButton(text='Добавить в корзину', callback_data=f'add_to_cart|{current_index}|{photo_index % images_sz}'))
-    keyboard.add(types.InlineKeyboardButton(text=BASKET_BUTTON, callback_data='go_to_cart'))
+    keyboard.add(types.InlineKeyboardButton(text=BASKET_BUTTON, callback_data=f'go_to_cart|{current_index}|{photo_index % images_sz}'))
     return keyboard
 
 
@@ -193,9 +196,9 @@ def handle_callback(call):
     else:
         media = additional_images[photo_index - 1]
     product_card = dict()
-    price = parsed_response['id'][0]['price']
-    name = parsed_response['id'][0]['name']
-    shop = parsed_response['id'][0]['shop']
+    price = parsed_response['id'][current_index]['price']
+    name = parsed_response['id'][current_index]['name']
+    shop = parsed_response['id'][current_index]['shop']
     caption = f'{name}\nPrice is {price}\nShop is {shop}'
     product_card['price'] = price
     product_card['name'] = name
@@ -218,16 +221,81 @@ def handle_callback(call):
     bot.answer_callback_query(call.id)
 
 
-@bot.callback_query_handler(func=lambda call: call.data == 'go_to_cart')
+@bot.callback_query_handler(func=lambda call: call.data.split("|")[0] == 'go_to_cart')
 def handle_callback(call):
     print("go_to_cart callback")
     if len(BASKET_LIST.items()) == 0:
-        keyboard = make_keyboard([BUTTONS_ARRAY])
+        remaining_buttons = [brand for brand in BUTTONS_ARRAY if brand not in user_brand_choices[call.from_user.id]]
+        keyboard = make_keyboard([remaining_buttons])
         bot.send_message(call.message.chat.id, "Ваша корзина пуста. Выберите интересующие вас маркетплейсы для поиска товаров.", reply_markup=keyboard)
+        return
+
+    final_price = 0.0
+    items_size = len(BASKET_LIST.items())
+    for key, value in BASKET_LIST.items():
+        print(key)
+        final_price += float(value['price'][1:])
+        bot.send_photo(call.message.chat.id, value['media'], caption=value['caption'])
+    final_price_in_rub = int(float(currency_rate['USD'].value) * final_price)
+
+    current_index = int(call.data.split("|")[1])
+    photo_index = int(call.data.split("|")[2])
+    keyboard = types.InlineKeyboardMarkup(row_width=3)
+    images_sz = len(parsed_response['id'][current_index]['additional_images']) + 1
+    keyboard.add(types.InlineKeyboardButton(text='Вернуться к товарам', callback_data=f'back_to_items|{current_index}|{photo_index % images_sz}'))
+    keyboard.add(types.InlineKeyboardButton(text='Оплатить заказ', callback_data=f'pay|{final_price_in_rub}'))
+    bot.send_message(call.message.chat.id, f"Вы выбрали {items_size} товаров на общую сумму {final_price_in_rub} рублей", reply_markup=keyboard)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.split("|")[0] == 'back_to_items')
+def handle_callback(call):
+    current_index = int(call.data.split("|")[1])
+    photo_index = int(call.data.split("|")[2])
+    keyboard = make_second_keyboard(current_index, photo_index)
+
+    price = parsed_response['id'][current_index]['price']
+    name = parsed_response['id'][current_index]['name']
+    shop = parsed_response['id'][current_index]['shop']
+    caption = f'{name}\nPrice is {price}\nShop is {shop}'
+    additional_images = parsed_response['id'][current_index]['additional_images']
+    if photo_index == 0:
+        media = parsed_response['id'][current_index]['image']
     else:
-        for key, value in BASKET_LIST.items():
-            print(key)
-            bot.send_photo(call.message.chat.id, value['media'], caption=value['caption'])
+        media = additional_images[photo_index - 1]
+
+    bot.send_photo(call.message.chat.id, media, caption=caption, reply_markup=keyboard)
+
+
+@bot.callback_query_handler(func=lambda call: call.data.split("|")[0] == 'pay')
+def handle_callback(call):
+    price = int(call.data.split("|")[1])
+
+    #bot.send_invoice(
+    #    chat_id=call.message.chat.id,
+    #    title='Товар',
+    #    description='Выбранные товары MULTIBRAND',
+    #    invoice_payload='TEST_PAYLOAD',
+    #    provider_token='TEST_TOKEN',
+    #    currency='USD',
+    #    photo_url=None,
+    #    photo_size=None,
+    #    photo_width=None,
+    #    photo_height=None,
+    #    is_flexible=False,
+    #    prices=[types.LabeledPrice(label='Товар', amount=int(price * 100))]
+    #)
+    bot.send_message(call.message.chat.id, 'Спасибо за оплату!')
+    BASKET_LIST.clear()
+
+
+@bot.pre_checkout_query_handler(func=lambda query: True)
+def process_pre_checkout_query(pre_checkout_query):
+    bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
+
+@bot.message_handler(content_types=['successful_payment'])
+def process_successful_payment(message):
+    bot.send_message(message.chat_id, 'Спасибо за оплату!')
+
 
 
 bot.polling()
