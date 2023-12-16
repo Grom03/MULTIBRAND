@@ -288,7 +288,7 @@ def handle_callback(call):
 def handle_callback(call):
     current_index = int(call.data.split("|")[1])
     photo_index = int(call.data.split("|")[2])
-    product = BASKET_LIST.pop(parsed_response["id"][current_index]["name"])
+    BASKET_LIST.pop(parsed_response["id"][current_index]["name"])
     keyboard = make_second_keyboard(current_index, photo_index)
     bot.edit_message_reply_markup(
         chat_id=call.message.chat.id,
@@ -296,6 +296,14 @@ def handle_callback(call):
         reply_markup=keyboard,
     )
     bot.answer_callback_query(call.id)
+
+
+def calc_final_price():
+    final_price = 0
+    for _, value in BASKET_LIST.items():
+        final_price += float(value["price"][1:])
+    final_price_in_rub = int(float(currency_rate["USD"].value) * final_price)
+    return final_price_in_rub
 
 
 @bot.callback_query_handler(func=lambda call: call.data.split("|")[0] == "go_to_cart")
@@ -315,13 +323,8 @@ def handle_callback(call):
         )
         return
 
-    final_price = 0.0
+    final_price_in_rub = calc_final_price()
     items_size = len(BASKET_LIST.items())
-    for key, value in BASKET_LIST.items():
-        print(key)
-        final_price += float(value["price"][1:])
-        bot.send_photo(call.message.chat.id, value["media"], caption=value["caption"])
-    final_price_in_rub = int(float(currency_rate["USD"].value) * final_price)
 
     current_index = int(call.data.split("|")[1])
     photo_index = int(call.data.split("|")[2])
@@ -338,12 +341,40 @@ def handle_callback(call):
             text="Оплатить заказ", callback_data=f"pay|{final_price_in_rub}"
         )
     )
-    bot.send_message(
+    msg = bot.send_message(
         call.message.chat.id,
         f"Вы выбрали {items_size} товаров на общую сумму {final_price_in_rub} рублей",
         reply_markup=keyboard,
     )
 
+    i = 0
+    for key, value in BASKET_LIST.items():
+        print(key)
+        print(len(key.encode('utf-8')))
+        keyboard = types.InlineKeyboardMarkup(row_width=1)
+        keyboard.add(
+            types.InlineKeyboardButton(
+                text="Удалить из корзины",
+                callback_data=f"drop_from_cart_in_cart|{i}|{msg.message_id}",
+            )
+        )
+        bot.send_photo(call.message.chat.id, value["media"], caption=value["caption"], reply_markup=keyboard)
+        i += 1
+
+@bot.callback_query_handler(
+    func=lambda call: call.data.split("|")[0] == "drop_from_cart_in_cart"
+)
+def handle_callback(call):
+    BASKET_LIST.pop(list(BASKET_LIST.keys())[int(call.data.split("|")[1])])
+    bot.delete_message(
+    chat_id=call.message.chat.id,
+    message_id=call.message.message_id,
+    )
+    if len(BASKET_LIST.items()) != 0:
+        bot.edit_message_text(f"Вы выбрали {len(BASKET_LIST.items())} товаров на общую сумму {calc_final_price()} рублей", call.message.chat.id, int(call.data.split("|")[2]))
+    else:
+        bot.edit_message_text(f"Ваша корзина пуста. Выберите интересующие вас маркетплейсы для поиска товаров.", call.message.chat.id, int(call.data.split("|")[2]))
+    bot.answer_callback_query(call.id)
 
 @bot.callback_query_handler(
     func=lambda call: call.data.split("|")[0] == "back_to_items"
