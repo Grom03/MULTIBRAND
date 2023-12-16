@@ -355,7 +355,7 @@ def handle_callback(call):
         keyboard.add(
             types.InlineKeyboardButton(
                 text="Удалить из корзины",
-                callback_data=f"drop_from_cart_in_cart|{i}|{msg.message_id}",
+                callback_data=f"drop_from_cart_in_cart|{i}|{msg.message_id}|{current_index}|{photo_index}",
             )
         )
         bot.send_photo(call.message.chat.id, value["media"], caption=value["caption"], reply_markup=keyboard)
@@ -370,10 +370,25 @@ def handle_callback(call):
     chat_id=call.message.chat.id,
     message_id=call.message.message_id,
     )
+    current_index = int(call.data.split("|")[3])
+    photo_index = int(call.data.split("|")[4])
+    keyboard = types.InlineKeyboardMarkup(row_width=3)
+    images_sz = len(parsed_response["id"][current_index]["additional_images"]) + 1
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text="Вернуться к товарам",
+            callback_data=f"back_to_items|{current_index}|{photo_index % images_sz}",
+        )
+    )
+    keyboard.add(
+        types.InlineKeyboardButton(
+            text="Оплатить заказ", callback_data=f"pay|{calc_final_price()}"
+        )
+    )
     if len(BASKET_LIST.items()) != 0:
-        bot.edit_message_text(f"Вы выбрали {len(BASKET_LIST.items())} товаров на общую сумму {calc_final_price()} рублей", call.message.chat.id, int(call.data.split("|")[2]))
+        bot.edit_message_text(f"Вы выбрали {len(BASKET_LIST.items())} товаров на общую сумму {calc_final_price()} рублей", call.message.chat.id, int(call.data.split("|")[2]), reply_markup=keyboard)
     else:
-        bot.edit_message_text(f"Ваша корзина пуста. Выберите интересующие вас маркетплейсы для поиска товаров.", call.message.chat.id, int(call.data.split("|")[2]))
+        bot.edit_message_text(f"Ваша корзина пуста. Выберите интересующие вас маркетплейсы для поиска товаров.", call.message.chat.id, int(call.data.split("|")[2]), reply_markup=keyboard)
     bot.answer_callback_query(call.id)
 
 @bot.callback_query_handler(
